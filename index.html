@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>wg-stats</title>
+<style>
+  :root{
+    --bg:#0a0d12; --panel:#10151c; --line:#1c242e; --line2:#283340;
+    --fg:#cdd6e0; --dim:#5d6b7a; --dimmer:#3a4552;
+    --accent:#39d3bb; --on:#4ade80; --off:#445; --warn:#f5b14c; --err:#f4685f;
+    --mono:ui-monospace,"JetBrains Mono","Cascadia Code","SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--mono);
+    font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  body{background-image:linear-gradient(var(--line) 1px,transparent 1px),
+    linear-gradient(90deg,var(--line) 1px,transparent 1px);
+    background-size:46px 46px;background-position:-1px -1px;
+    background-blend-mode:soft-light;padding:22px 18px 60px}
+  .wrap{max-width:1080px;margin:0 auto}
+
+  header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+    border-bottom:1px solid var(--line2);padding-bottom:12px;margin-bottom:2px}
+  h1{font-size:14px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;margin:0}
+  h1 .ac{color:var(--accent)}
+  .host{color:var(--dim)}
+  .spacer{flex:1}
+  .meta{color:var(--dim);font-size:12px}
+  .meta b{color:var(--fg);font-weight:600}
+  .meta .on{color:var(--on)}
+
+  #banner{display:none;margin:12px 0 0;padding:8px 12px;border-radius:5px;
+    font-size:12px;border:1px solid}
+  #banner.warn{display:block;color:var(--warn);border-color:#5a4420;background:#1d160a}
+  #banner.err{display:block;color:var(--err);border-color:#5a2420;background:#1d0c0a}
+
+  table{width:100%;border-collapse:collapse;margin-top:14px}
+  th,td{text-align:left;padding:7px 10px;white-space:nowrap}
+  thead th{font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;
+    color:var(--dim);font-weight:500;border-bottom:1px solid var(--line2)}
+  th.r,td.r{text-align:right;font-variant-numeric:tabular-nums}
+  tbody tr{border-bottom:1px solid var(--line)}
+  tbody tr.off{color:var(--dimmer)}
+  tbody tr.off .name{color:var(--dim)}
+  tbody tr:hover{background:#0e141c}
+
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--off);
+    vertical-align:middle}
+  tr.on .dot{background:var(--on);box-shadow:0 0 0 0 rgba(74,222,128,.6);
+    animation:pulse 2.4s ease-out infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(74,222,128,.5)}
+    70%{box-shadow:0 0 0 6px rgba(74,222,128,0)}100%{box-shadow:0 0 0 0 rgba(74,222,128,0)}}
+
+  .name{color:var(--fg);font-weight:500}
+  .pk{color:var(--dimmer);font-size:11px}
+  .badge{font-size:10px;letter-spacing:.08em;padding:2px 6px;border-radius:4px;
+    border:1px solid var(--line2);color:var(--dim)}
+  .badge.awg{color:var(--accent);border-color:#1d4f49}    /* online awg100 */
+  .badge.wg{color:#5fd38b;border-color:#1d4a33}           /* online wg99: dimmer */
+  .badge.turn{color:var(--warn);border-color:#5a4420}     /* online: endpoint via turn-proxy */
+  .badge.node{color:var(--dim);border-color:var(--line2);margin-left:5px;letter-spacing:.06em}  /* offline: grey */
+  /* node badge colours are set per-node in the NODES config and applied inline */
+  .c-type{font-size:15px;text-align:center;line-height:1}
+  th .arr{font-size:14px;font-weight:700;line-height:0;vertical-align:-1px;margin-left:2px}
+  th .arr.up{color:var(--accent)}
+  th .arr.dn{color:#6cb6ff}
+  .rate{color:var(--accent)}
+  .rate.z{color:var(--dimmer)}
+  .ep{color:var(--dim);font-size:12px}
+  .empty{padding:30px 10px;color:var(--dim);text-align:center}
+  .block{margin-top:24px}
+  .block:first-of-type{margin-top:10px}
+  .sec{font-size:11px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--accent);margin:0}
+  .sec .cnt{color:var(--dim);font-weight:500;letter-spacing:.05em;margin-left:8px}
+
+  /* ── mobile: reflow the table into one card per peer ───────────────── */
+  @media (max-width:720px){
+    body{padding:16px 12px 50px;background-size:34px 34px}
+    header{gap:8px 12px}
+    h1{font-size:13px}
+    .host{font-size:12px}
+    .meta{font-size:11px}
+
+    thead{display:none}
+    table,tbody{display:block}
+    tr{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      grid-template-areas:
+        "name  badge"
+        "ip    ep"
+        "rup   rdn"
+        "tup   tdn"
+        "hs    hs";
+      column-gap:12px;row-gap:7px;
+      border:1px solid var(--line);border-left:3px solid var(--off);
+      border-radius:9px;padding:11px 13px;margin-bottom:10px}
+    tr.on{border-left-color:var(--on)}      /* status shows as the left edge */
+    tr:hover{background:none}
+
+    td{display:block;padding:0;border:none;white-space:normal}
+    td.r{text-align:left;font-size:14px}
+    td[data-label]::before{content:attr(data-label);display:block;
+      color:var(--dim);font-size:9px;letter-spacing:.1em;text-transform:uppercase;
+      margin-bottom:2px}
+
+    .c-dot{display:none}
+    .c-type{grid-area:name;justify-self:start;align-self:center;font-size:14px}
+    .c-name{grid-area:name;align-self:center;padding-left:26px}
+    .c-name .pk{font-size:10px}
+    .c-if{grid-area:badge;justify-self:end;align-self:center}
+    .c-ip{grid-area:ip}
+    .c-ep{grid-area:ep}
+    .c-rup{grid-area:rup}
+    .c-rdn{grid-area:rdn}
+    .c-tup{grid-area:tup}
+    .c-tdn{grid-area:tdn}
+    .c-hs{grid-area:hs}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>wg<span class="ac">·</span>stats</h1>
+    <span class="host" id="host">—</span>
+    <span class="spacer"></span>
+    <span class="meta"><b class="on" id="nOnline">0</b> / <b id="nTotal">0</b> online
+      &nbsp;·&nbsp; updated <b id="age">—</b></span>
+  </header>
+  <div id="banner"></div>
+
+  <section class="block">
+    <h2 class="sec">routers <span class="cnt" id="cntR"></span></h2>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:18px"></th>
+          <th style="width:22px"></th>
+          <th>user</th>
+          <th>ip</th>
+          <th>if</th>
+          <th>endpoint</th>
+          <th class="r">rate up <span class="arr up">↑</span></th>
+          <th class="r">rate down <span class="arr dn">↓</span></th>
+          <th class="r">total up <span class="arr up">↑</span></th>
+          <th class="r">total down <span class="arr dn">↓</span></th>
+          <th class="r">handshake</th>
+        </tr>
+      </thead>
+      <tbody id="rowsR"></tbody>
+    </table>
+    <div class="empty" id="emptyR" style="display:none">no routers</div>
+  </section>
+
+  <section class="block">
+    <h2 class="sec">users <span class="cnt" id="cntU"></span></h2>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:18px"></th>
+          <th style="width:22px"></th>
+          <th>user</th>
+          <th>ip</th>
+          <th>if</th>
+          <th>endpoint</th>
+          <th class="r">rate up <span class="arr up">↑</span></th>
+          <th class="r">rate down <span class="arr dn">↓</span></th>
+          <th class="r">total up <span class="arr up">↑</span></th>
+          <th class="r">total down <span class="arr dn">↓</span></th>
+          <th class="r">handshake</th>
+        </tr>
+      </thead>
+      <tbody id="rowsU"></tbody>
+    </table>
+    <div class="empty" id="emptyU" style="display:none">no users</div>
+  </section>
+</div>
+
+<script>
+// ─── CONFIG ───────────────────────────────────────────────────────────────────
+//  NODES: one entry per node. The key is the node's identity — it's the badge
+//  text (unless `label` overrides it) and the colour lookup. It can be anything;
+//  the link to live data is the `file` field, not the hostname.
+//    file   – the per-node stats json served alongside this page (required);
+//             MUST match the collector's output filename (stats-<NODE>.json)
+//    color  – node badge text colour while that node is online (required)
+//    border – node badge border colour (optional; defaults to color)
+//    label  – overrides the badge text (optional; defaults to the key)
+//  For offline placeholders, set the matching key in each users.json "node" field.
+//  Add a server by adding one line here — no CSS edits needed.
+const NODES = {
+  "node-a": { file:"stats-node-a.json", color:"#b387f5", border:"#3a2a5a" },
+  "node-b": { file:"stats-node-b.json", color:"#6cb6ff", border:"#1d3a5a" },
+  // add more nodes here — one line each.
+};
+//  Any endpoint whose host is in this list gets the 📡 icon + "turn-proxy" tag.
+const TURN_IPS = ["127.0.0.1", "YOUR_PUBLIC_TURN_IP_HERE"];   // add more, comma-separated, one per turn-proxy host
+
+//  Show peers present on a node but NOT listed in users.json?
+//  false = roster is strictly users.json (recommended).
+const SHOW_UNLISTED = false;
+// ───────────────────────────────────────────────────────────────────────────────
+
+const POLL = 2000;
+const SOURCES = Object.values(NODES).map(n => n.file);   // one file per node
+const FILE_NODE = Object.fromEntries(Object.entries(NODES).map(([k,n]) => [n.file, k]));  // stats file -> node key (config is source of truth)
+let names = {};
+function shortNode(h){ return String(h||"") || "node"; }
+function fileNode(f){ const m=String(f).match(/stats-?(.*?)\.json$/); return (m&&m[1]) ? m[1] : "node"; }
+function ifLabel(s){                                  // users.json text -> friendly tag name
+  const v = String(s||"").toLowerCase();
+  if(v.startsWith("awg")) return "amnezia";
+  if(v.startsWith("wg"))  return "wireguard";
+  return s || "—";
+}
+
+const U = ["B","KiB","MiB","GiB","TiB","PiB"];
+function fmtBytes(n){
+  if(!n) return "0";
+  let i=0; while(n>=1024 && i<U.length-1){n/=1024;i++;}
+  return (n>=100||i===0 ? n.toFixed(0) : n.toFixed(1)) + " " + U[i];
+}
+function fmtRate(n){ return n<1 ? "—" : fmtBytes(n) + "/s"; }
+function fmtAge(s){
+  if(s==null) return "never";
+  if(s<0) s=0;
+  if(s<60) return s+"s";
+  if(s<3600){const m=s/60|0; return m+"m "+(s%60)+"s";}
+  if(s<86400){const h=s/3600|0; return h+"h "+((s%3600)/60|0)+"m";}
+  const d=s/86400|0; return d+"d "+((s%86400)/3600|0)+"h";
+}
+function meta(pk){
+  const e = names[pk];
+  if(!e) return {};
+  return (typeof e === "string") ? {name:e} : e;   // tolerate old string form
+}
+function label(pk){ return meta(pk).name || (pk.slice(0,10)+"…"); }
+function epHost(ep){ return ep ? String(ep).split(":")[0] : ""; }
+// node badge helpers — colour/label come from the NODES config above
+function nodeStyle(node, online){
+  const c = NODES[node];
+  return (online && c) ? ` style="color:${c.color};border-color:${c.border||c.color}"` : "";
+}
+function nodeLabel(node){ const c = NODES[node]; return (c && c.label) || node; }
+function typeIcon(p){
+  if(TURN_IPS.includes(epHost(p.endpoint))) return "📡";
+  if(p.type === "router") return "🌐";
+  return "👤";
+}
+function ipKey(ip){                                  // numeric per-octet sort
+  const a = String(ip||"").split(".").map(n=>parseInt(n,10));
+  if(a.length!==4 || a.some(isNaN)) return Infinity; // unknown IPs sort last
+  return ((a[0]*256+a[1])*256+a[2])*256+a[3];
+}
+function esc(s){ return (s??"").replace(/[<>&]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;"}[c])); }
+
+function banner(cls,msg){
+  const b=document.getElementById("banner");
+  if(!cls){b.className="";b.textContent="";return;}
+  b.className=cls; b.textContent=msg;
+}
+
+function mkRow(pk, d, m){
+  const online = d ? !!d.online : false;
+  const liveIf = (d && d.iface) ? String(d.iface).toLowerCase() : "";   // colour source
+  const turn   = !!(d && TURN_IPS.includes(epHost(d.endpoint)));
+
+  // TAG TEXT: from users.json (mapped to a friendly name); turn overrides
+  const ifText = turn ? "turn-proxy" : ifLabel(m.if);
+
+  // TAG COLOUR: from the live stats only, and only while online (else grey)
+  let ifColor = "";
+  if(online){
+    if(turn) ifColor = "turn";
+    else if(liveIf.startsWith("awg")) ifColor = "awg";
+    else if(liveIf.startsWith("wg"))  ifColor = "wg";
+  }
+
+  const ip = m.ip
+    || (d && d.allowed_ips ? d.allowed_ips.split(",")[0].split("/")[0].trim() : "")
+    || "";
+
+  return {
+    public_key: pk, online,
+    node: d ? d.node : (m.node || ""),
+    type: m.type || "", ip,
+    endpoint: d ? (d.endpoint || null) : null,
+    rx_speed: d ? d.rx_speed : 0, tx_speed: d ? d.tx_speed : 0,
+    rx_bytes: d ? d.rx_bytes : 0, tx_bytes: d ? d.tx_bytes : 0,
+    handshake_age: d ? d.handshake_age : null,
+    ifText, ifColor,
+  };
+}
+
+function rowHtml(p){
+  const rz=p.rx_speed<1?" z":"", tz=p.tx_speed<1?" z":"";
+  const nm = meta(p.public_key).name;
+  const pkShort = esc(p.public_key.slice(0,22))+"…";
+  return `<tr class="${p.online?"on":"off"}">
+    <td class="c-dot"><span class="dot"></span></td>
+    <td class="c-type">${typeIcon(p)}</td>
+    <td class="c-name">${nm
+        ? `<span class="name">${esc(nm)}</span><div class="pk">${pkShort}</div>`
+        : `<span class="name">${pkShort}</span>`}</td>
+    <td class="c-ip" data-label="ip">${esc(p.ip||"—")}</td>
+    <td class="c-if"><span class="badge ${p.ifColor}">${esc(p.ifText)}</span>${p.node?`<span class="badge node"${nodeStyle(p.node,p.online)}>${esc(nodeLabel(p.node))}</span>`:''}</td>
+    <td class="c-ep ep" data-label="endpoint">${esc(p.endpoint||"—")}</td>
+    <td class="c-rup r rate${rz}" data-label="rate up ↑">${fmtRate(p.rx_speed)}</td>
+    <td class="c-rdn r rate${tz}" data-label="rate down ↓">${fmtRate(p.tx_speed)}</td>
+    <td class="c-tup r" data-label="total up ↑">${fmtBytes(p.rx_bytes)}</td>
+    <td class="c-tdn r" data-label="total down ↓">${fmtBytes(p.tx_bytes)}</td>
+    <td class="c-hs r" data-label="handshake">${fmtAge(p.handshake_age)}</td>
+  </tr>`;
+}
+
+function fillBlock(rowsId, emptyId, cntId, arr){
+  document.getElementById(rowsId).innerHTML = arr.map(rowHtml).join("");
+  document.getElementById(emptyId).style.display = arr.length ? "none" : "block";
+  const on = arr.filter(p=>p.online).length;
+  document.getElementById(cntId).textContent = `${on} / ${arr.length} online`;
+}
+
+function render(sources, nameErr){
+  const nowSec = Date.now()/1000|0;
+
+  // flatten live peers across all reachable nodes, tagging each with its node
+  const live = [], upNodes = [];
+  for(const s of sources){
+    if(!s.snapshot) continue;
+    // node identity comes from the config (which file the stats arrived in),
+    // NOT from the collector's reported hostname
+    const node = FILE_NODE[s.name] || shortNode(s.snapshot.hostname);
+    upNodes.push(node);
+    for(const [iface,info] of Object.entries(s.snapshot.interfaces||{}))
+      for(const p of (info.peers||[])) live.push({...p, iface, node});
+  }
+  // ONE live entry per public key (a peer may appear on >1 node): prefer online, then freshest handshake
+  const bestByPk = {};
+  for(const p of live){
+    const cur = bestByPk[p.public_key];
+    if(!cur){ bestByPk[p.public_key] = p; continue; }
+    const aAge = p.handshake_age==null?Infinity:p.handshake_age;
+    const bAge = cur.handshake_age==null?Infinity:cur.handshake_age;
+    if((p.online?1:0) > (cur.online?1:0) || ((!!p.online===!!cur.online) && aAge < bAge))
+      bestByPk[p.public_key] = p;
+  }
+  // roster: every users.json entry once (live or placeholder); unlisted live peers only if SHOW_UNLISTED
+  const rows = [];
+  for(const pk of Object.keys(names)) rows.push(mkRow(pk, bestByPk[pk]||null, meta(pk)));
+  if(SHOW_UNLISTED) for(const pk of Object.keys(bestByPk)) if(!(pk in names)) rows.push(mkRow(pk, bestByPk[pk], meta(pk)));
+  rows.sort((a,b)=> (b.online - a.online) || (ipKey(a.ip) - ipKey(b.ip)) || label(a.public_key).localeCompare(label(b.public_key)));
+
+  document.getElementById("host").textContent = upNodes.length ? upNodes.join(" · ") : "—";
+  document.getElementById("nOnline").textContent = rows.filter(p=>p.online).length;
+  document.getElementById("nTotal").textContent  = rows.length;
+
+  fillBlock("rowsR","emptyR","cntR", rows.filter(p=>p.type==="router"));
+  fillBlock("rowsU","emptyU","cntU", rows.filter(p=>p.type!=="router"));
+
+  // freshness = the most stale reachable node
+  const ages = sources.filter(s=>s.snapshot&&s.snapshot.generated_at).map(s=>nowSec-s.snapshot.generated_at);
+  const oldest = ages.length ? Math.max(...ages) : null;
+  document.getElementById("age").textContent = oldest==null ? "—" : fmtAge(oldest)+" ago";
+
+  const probs = [];
+  if(nameErr) probs.push("users.json: "+nameErr);
+  for(const s of sources) if(!s.snapshot) probs.push(fileNode(s.name)+" down ("+s.error+")");
+  for(const s of sources) if(s.snapshot){ const a=nowSec-(s.snapshot.generated_at||0); if(a>12) probs.push((FILE_NODE[s.name]||shortNode(s.snapshot.hostname))+" "+fmtAge(a)+" stale"); }
+  banner(probs.length ? (nameErr ? "err" : "warn") : null, probs.join(" · "));
+}
+
+async function tick(){
+  let nameErr=null;
+  try{
+    const r = await fetch("users.json",{cache:"no-store"});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    names = await r.json();
+  }catch(e){ nameErr = e.message; }
+
+  const sources = await Promise.all(SOURCES.map(async name=>{
+    try{
+      const r = await fetch(name,{cache:"no-store"});
+      if(!r.ok) throw new Error("HTTP "+r.status);
+      return {name, snapshot: await r.json(), error:null};
+    }catch(e){ return {name, snapshot:null, error:e.message}; }
+  }));
+
+  if(sources.every(s=>!s.snapshot)){
+    banner("err","no stats sources reachable — "+sources.map(s=>fileNode(s.name)+": "+s.error).join(" · "));
+    return;
+  }
+  render(sources, nameErr);
+}
+tick();
+setInterval(tick, POLL);
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+[Unit]
+Description=wg-stats collector (samples wg/awg interfaces -> JSON -> viewer host)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/wg-stats/collector.py
+Restart=always
+RestartSec=5
+# Reading awg/wg state and writing to /run needs privileges; root is simplest.
+# To drop privileges, grant the service CAP_NET_ADMIN and adjust paths/perms.
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,26 @@
+# wg-stats viewer — static files behind HTTP basic auth + TLS.
+# Drop index.html, users.json and the pushed stats-*.json into the root below.
+
+server {
+    listen YOUR_PORT_HERE ssl;
+    server_name YOUR_DOMAIN_HERE;
+
+    # ssl_certificate     /path/to/fullchain.pem;
+    # ssl_certificate_key /path/to/privkey.pem;
+
+    root /opt/wg-stats;
+    index index.html;
+
+    # this page is an inventory of your users — keep it authenticated
+    auth_basic           "wg-stats";
+    auth_basic_user_file /etc/nginx/wg-stats.htpasswd;
+
+    location / {
+        try_files $uri =404;
+    }
+
+    # never cache the live data
+    location ~ \.json$ {
+        add_header Cache-Control "no-store";
+    }
+}

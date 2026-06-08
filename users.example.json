@@ -1,0 +1,6 @@
+{
+  "kQx8Z2pL5vR9nT3wY7mB1cD4fH6jK0sA8eU2iO5gW3M=": { "name": "gateway-home", "ip": "10.10.99.2",  "if": "wg99",   "type": "router", "node": "node-a" },
+  "pR4tY7uI9oP2aS5dF8gH1jK3lZ6xC0vB4nM7qW9eR2T=": { "name": "alice",        "ip": "10.10.100.2", "if": "awg100", "type": "user",   "node": "node-a" },
+  "mN3bV6cX9zL2kJ5hG8fD1sA4qW7eR0tY3uI6oP9aS2D=": { "name": "bob",          "ip": "10.10.100.3", "if": "awg100", "type": "user",   "node": "node-b" },
+  "wE5rT8yU1iO4pA7sD0fG3hJ6kL9zX2cV5bN8mQ1wE4R=": { "name": "carol",        "ip": "10.10.99.3",  "if": "wg99",   "type": "user",   "node": "node-b" }
+}
